@@ -6,12 +6,24 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MovingDotsAtmosphere } from "@/components/atmosphere/MovingDotsAtmosphere";
 
 type FieldErrors = { username?: string; password?: string };
+type DemoField = "username" | "password";
+
+/*
+ * ⚠️ DEMO ONLY — the login form types this account in by itself so anyone
+ * trying the app can sign in without looking it up. Documented in README.md.
+ * TODO: remove (with the typing effect in LoginScreen) once real auth lands.
+ */
+const DEMO_CREDENTIALS = { username: "demouser", password: "NextStepDemoUser001" };
 
 const HEADLINE = [["Your", "next", "step"], ["is", "waiting."]];
 const ACCENT_WORDS = new Set(["next", "step"]);
 
 const fieldClass =
   "h-12 w-full rounded-xl border bg-field px-4 text-base text-text outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-text-tertiary focus:border-accent/60 focus:ring-[3px] focus:ring-accent/12";
+
+// While the demo types into a field, it wears the focus look so the eye follows along.
+const fieldTone = (error: string | undefined, typing: boolean) =>
+  error ? "border-error/60" : typing ? "border-accent/60 ring-[3px] ring-accent/12" : "border-line";
 
 // Floema's uppercase nav treatment: 12px, regular weight, -0.02em, 1.4 line height.
 const labelClass = "mb-2 block text-xs font-normal uppercase leading-[1.4] tracking-[-0.02em] text-text-secondary";
@@ -25,6 +37,8 @@ export function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [demoField, setDemoField] = useState<DemoField | null>(null);
+  const demoStopped = useRef(false);
 
   // The full intro is for the first visit; the layout's head script reads this flag.
   useEffect(() => {
@@ -32,6 +46,54 @@ export function LoginScreen() {
       localStorage.setItem("nextstep:intro-seen", "1");
     } catch {}
   }, []);
+
+  // ⚠️ DEMO ONLY — types the demo account in once the card has arrived. Any
+  // focus, edit or submit hands the form back to the person.
+  useEffect(() => {
+    let timer = 0;
+    const type = (field: DemoField, speedMs: number, then?: () => void) => {
+      const text = DEMO_CREDENTIALS[field];
+      const set = field === "username" ? setUsername : setPassword;
+      let index = 0;
+      const tick = () => {
+        if (demoStopped.current) return;
+        index += 1;
+        set(text.slice(0, index));
+        if (index < text.length) {
+          timer = window.setTimeout(tick, speedMs);
+        } else {
+          setDemoField(null);
+          then?.();
+        }
+      };
+      setDemoField(field);
+      timer = window.setTimeout(tick, speedMs);
+    };
+
+    // Wait for the card's entrance: ~0.9s on a first visit, 0.3s after that.
+    const startDelay = document.documentElement.dataset.intro === "short" ? 400 : 1000;
+
+    // Reduced motion: the account arrives filled in, without the typing.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      timer = window.setTimeout(() => {
+        if (demoStopped.current) return;
+        setUsername(DEMO_CREDENTIALS.username);
+        setPassword(DEMO_CREDENTIALS.password);
+      }, startDelay);
+      return () => window.clearTimeout(timer);
+    }
+
+    timer = window.setTimeout(
+      () => type("username", 70, () => (timer = window.setTimeout(() => type("password", 50), 300))),
+      startDelay,
+    );
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const stopDemo = () => {
+    demoStopped.current = true;
+    setDemoField(null);
+  };
 
   // The macOS "wrong password" shake: a decaying horizontal wobble.
   const shake = () => {
@@ -44,6 +106,7 @@ export function LoginScreen() {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
+    stopDemo();
 
     const errors: FieldErrors = {};
     if (!username.trim()) errors.username = "Enter your username.";
@@ -144,13 +207,15 @@ export function LoginScreen() {
                 autoCorrect="off"
                 spellCheck={false}
                 value={username}
+                onFocus={stopDemo}
                 onChange={(event) => {
+                  stopDemo();
                   setUsername(event.target.value);
                   setFieldErrors((errors) => ({ ...errors, username: undefined }));
                 }}
                 aria-invalid={Boolean(fieldErrors.username)}
                 aria-describedby={fieldErrors.username ? "username-error" : undefined}
-                className={`${fieldClass} ${fieldErrors.username ? "border-error/60" : "border-line"}`}
+                className={`${fieldClass} ${fieldTone(fieldErrors.username, demoField === "username")}`}
               />
               <p id="username-error" className="mt-1.5 h-5 text-[0.8125rem] leading-5 text-error">
                 {fieldErrors.username}
@@ -169,13 +234,15 @@ export function LoginScreen() {
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
+                  onFocus={stopDemo}
                   onChange={(event) => {
+                    stopDemo();
                     setPassword(event.target.value);
                     setFieldErrors((errors) => ({ ...errors, password: undefined }));
                   }}
                   aria-invalid={Boolean(fieldErrors.password)}
                   aria-describedby={fieldErrors.password ? "password-error" : undefined}
-                  className={`${fieldClass} pr-12 ${fieldErrors.password ? "border-error/60" : "border-line"}`}
+                  className={`${fieldClass} pr-12 ${fieldTone(fieldErrors.password, demoField === "password")}`}
                 />
                 <button
                   type="button"

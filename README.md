@@ -20,6 +20,19 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Demo account
+
+The login screen types a demo account in by itself, so you can try the app without looking anything up:
+
+| Field    | Value                 |
+| -------- | --------------------- |
+| Username | `demouser`            |
+| Password | `NextStepDemoUser001` |
+
+Click into either field (or submit) at any point to take over and type your own. With reduced motion turned on, the fields arrive already filled in instead of being typed.
+
+> **Demo only.** These are public test credentials, not a real account. Sign-in isn't wired to the server yet. Remove `DEMO_CREDENTIALS` and the typing effect in `components/login/LoginScreen.tsx` once real auth lands.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
