@@ -1,26 +1,216 @@
 @import "tailwindcss";
 
+/* NextStep is dark-only: an obsidian base with lavender as the single accent. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0e0c14;
+  --surface: #16141d;
+  --field: #0f0d15;
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.16);
+  --text: #ecebf1;
+  --text-secondary: #a6a1b3;
+  --text-tertiary: #77727f;
+  --accent: #ede1ff;
+  --on-light: #1b1726;
+  --error: #ffb4ab;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-field: var(--field);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-accent: var(--accent);
+  --color-error: var(--error);
+  /* Two typefaces: Clash Display for display moments, Satoshi for everything else. */
+  --font-sans: "Satoshi", system-ui, sans-serif;
+  --font-display: "Clash Display", "Satoshi", system-ui, sans-serif;
+  /* SF Pro on Apple devices (with optical sizing), Geist elsewhere. */
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-geist), system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+/*
+ * Entrances. CSS rather than JS so the screen is visible from first paint,
+ * even if scripts are slow or blocked.
+ */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@keyframes word-rise {
+  from {
+    transform: translateY(105%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.rise {
+  animation: rise 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.word-rise {
+  animation: word-rise 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Lands once "step" has settled (~0.89s), so the line reads before the phrase lights up. */
+.headline-accent::after {
+  animation: fade-in 450ms cubic-bezier(0.22, 1, 0.36, 1) 0.9s both;
+}
+
+/* A beat after "waiting" lands (~1.01s). */
+.headline-period {
+  animation: fade-in 200ms ease-out 1.25s both;
+}
+
+/* The receding half of the subhead arrives quietly: it fades, the lead moves. */
+.subhead-tail {
+  animation: fade-in 500ms cubic-bezier(0.22, 1, 0.36, 1) 0.62s both;
+}
+
+/*
+ * Returning visitors (and reduced motion): one short, still fade for the whole
+ * screen. The staged beats are already in place from the start.
+ */
+:root[data-intro="short"] :is(.rise, .word-rise) {
+  animation: fade-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0s !important;
+}
+
+:root[data-intro="short"] .headline-accent::after,
+:root[data-intro="short"] :is(.headline-period, .subhead-tail) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .word-rise {
+    animation: fade-in 200ms ease-out both;
+    animation-delay: 0s !important;
+  }
+
+  .headline-accent::after,
+  .headline-period,
+  .subhead-tail {
+    animation: none;
+  }
+}
+
+/* Grid layer used by MovingDotsAtmosphere. */
+.onboarding-grid-bg {
+  background-image:
+    linear-gradient(rgba(200, 194, 228, 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 194, 228, 0.032) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 75%);
+}
+
+/*
+ * "next step" in the headline carries the accent. It's a generated layer over
+ * the plain word, so the heading's real text isn't duplicated.
+ */
+.headline-accent::after {
+  content: attr(data-accent);
+  position: absolute;
+  inset: 0;
+  color: var(--accent);
+}
+
+/*
+ * Login card: a solid surface with no border (per the No-Line rule). It
+ * separates from the page by tone and a deep, soft shadow; a faint highlight
+ * on the top edge reads as light catching the surface.
+ */
+.login-card {
+  background: var(--surface);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 30px 60px -12px rgb(0 0 0 / 0.6);
+}
+
+/*
+ * Primary button: a solid, lit key. A soft top-to-bottom shading and a bright
+ * inner top edge give it material; it settles into the page on press.
+ */
+.primary-button {
+  height: 3rem;
+  width: 100%;
+  border-radius: 0.75rem;
+  background: linear-gradient(180deg, #fbf9ff 0%, #ebe4fa 100%);
+  color: var(--on-light);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    inset 0 -1px 0 rgb(46 39 66 / 0.12),
+    0 1px 2px rgb(0 0 0 / 0.5),
+    0 6px 16px -4px rgb(0 0 0 / 0.5);
+  transition:
+    filter 150ms ease-out,
+    transform 90ms ease-out,
+    box-shadow 90ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .primary-button:hover {
+    filter: brightness(1.03);
+  }
+}
+
+.primary-button:active {
+  transform: translateY(1px) scale(0.99);
+  box-shadow:
+    inset 0 1px 2px rgb(46 39 66 / 0.18),
+    0 1px 1px rgb(0 0 0 / 0.5);
+}
+
+.primary-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-contrast: more) {
+  .login-card {
+    outline: 1px solid var(--line-strong);
+  }
+
+  :root {
+    --line: rgb(255 255 255 / 0.28);
+    --line-strong: rgb(255 255 255 / 0.5);
+    --text-secondary: #d4d0dc;
+    --text-tertiary: #b3aebd;
+  }
+}
+
+/* Keep browser autofill on the field color instead of Chrome's pale blue. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+  box-shadow: 0 0 0 1000px var(--field) inset;
+  transition: background-color 9999s;
 }
