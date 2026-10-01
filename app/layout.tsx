@@ -35,8 +35,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         */}
         <link rel="preconnect" href="https://api.fontshare.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://cdn.fontshare.com" crossOrigin="anonymous" />
+        {/* One request per family: Fontshare drops Satoshi when both are combined in one URL. */}
         <link
-          href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600&f[]=satoshi@400,500&display=swap"
+          href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600&display=swap"
+          rel="stylesheet"
+        />
+        <link
+          href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500&display=swap"
           rel="stylesheet"
         />
       </head>

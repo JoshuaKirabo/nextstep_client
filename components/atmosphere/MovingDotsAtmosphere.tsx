@@ -1,18 +1,100 @@
 "use client";
 
-import { motion, type MotionValue, useMotionTemplate, useMotionValue, useSpring } from "framer-motion";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { motion, type MotionValue, useMotionValue, useSpring } from "framer-motion";
+import { useEffect, useRef } from "react";
 
 const BG_BASE = "#0e0c14";
 const BG_VIGNETTE_EDGE = "rgba(8,6,14,0.88)";
 
-type BackdropDot = { bx: number; by: number; seed: number };
+const SPACING = 30;
+const INFLUENCE = 168;
+const GLOW_RANGE = INFLUENCE * 1.5;
+const PUSH_MAX = 16;
+const BASE_ALPHA = 0.125;
+const GLOW_ALPHA = 0.34;
+const BASE_RADIUS = 1.38;
+const GLOW_RADIUS = 0.62;
+const MAX_RADIUS = BASE_RADIUS + GLOW_RADIUS;
+
+/* Full rate while the pointer (and its spring) is moving; the idle drift is a few px/s, so half rate is plenty. */
+const ACTIVE_FRAME_MS = 1000 / 60;
+const IDLE_FRAME_MS = 1000 / 30;
+const ACTIVE_WINDOW_MS = 1200;
+
+/*
+ * Each dot wobbles by a sum of six sines, A·sin(ωt + φ). The frequencies are shared and only the
+ * phases differ per dot, so the angle-addition identity
+ *   A·sin(ωt + φ) = sin(ωt)·A·cos(φ) + cos(ωt)·A·sin(φ)
+ * lets a frame compute six sin/cos pairs in total, then only multiply-adds per dot.
+ * Terms 0–2 move x, terms 3–5 move y.
+ */
+const FREQS = [1.65, 1.98, 3.05, 1.452, 2.2, 3.2];
+const AMPS = [2.75, 1.95, 1.05, 2.55, 1.75, 0.95];
+const TERMS = FREQS.length;
+
+function wobblePhases(seed: number, ax: number, ay: number): number[] {
+  const quarter = Math.PI / 2; // cos(x) = sin(x + π/2)
+  return [
+    seed + ax,
+    0.567 * seed - ay + quarter,
+    1.65 * seed + 0.4 * ay,
+    0.88 * seed + ay + quarter,
+    0.63 * seed + 0.8 * ax,
+    1.4 * seed - 0.35 * ax + quarter,
+  ];
+}
 
 function hashSeed(a: number, b: number): number {
   let h = (a * 374761393 + b * 668265263) >>> 0;
   h = (h ^ (h >>> 13)) >>> 0;
   h = Math.imul(h, 1274126177) >>> 0;
   return (h ^ (h >>> 16)) * 2.3283064365386963e-10;
+}
+
+type DotField = { count: number; base: Float32Array; coef: Float32Array };
+
+function buildField(w: number, h: number): DotField {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  let row = 0;
+  for (let y = SPACING * 0.5; y < h + SPACING; y += SPACING, row++) {
+    const shift = (row % 2) * (SPACING * 0.5);
+    for (let x = SPACING * 0.5 + shift; x < w + SPACING; x += SPACING) {
+      xs.push(x);
+      ys.push(y);
+    }
+  }
+
+  const count = xs.length;
+  const base = new Float32Array(count * 2);
+  const coef = new Float32Array(count * TERMS * 2);
+  for (let i = 0; i < count; i++) {
+    const bx = xs[i]!;
+    const by = ys[i]!;
+    base[i * 2] = bx;
+    base[i * 2 + 1] = by;
+    const seed = hashSeed(Math.floor(bx), Math.floor(by)) * Math.PI * 2;
+    const phases = wobblePhases(seed, bx * 0.019, by * 0.021);
+    for (let k = 0; k < TERMS; k++) {
+      coef[(i * TERMS + k) * 2] = AMPS[k]! * Math.cos(phases[k]!);
+      coef[(i * TERMS + k) * 2 + 1] = AMPS[k]! * Math.sin(phases[k]!);
+    }
+  }
+  return { count, base, coef };
+}
+
+/* One pre-rendered dot, stamped with drawImage: far cheaper than a path + fill per dot. */
+function buildSprite(dpr: number): HTMLCanvasElement {
+  const sprite = document.createElement("canvas");
+  const size = Math.ceil(MAX_RADIUS * 2 * dpr) + 2;
+  sprite.width = size;
+  sprite.height = size;
+  const sctx = sprite.getContext("2d")!;
+  sctx.fillStyle = "rgb(248, 246, 253)";
+  sctx.beginPath();
+  sctx.arc(size / 2, size / 2, MAX_RADIUS * dpr, 0, Math.PI * 2);
+  sctx.fill();
+  return sprite;
 }
 
 function MovingBackdropDots({
@@ -23,15 +105,6 @@ function MovingBackdropDots({
   mouseY: MotionValue<number>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef = useRef(0);
-  const dotsRef = useRef<BackdropDot[]>([]);
-  const mouseXRef = useRef(mouseX);
-  const mouseYRef = useRef(mouseY);
-
-  useLayoutEffect(() => {
-    mouseXRef.current = mouseX;
-    mouseYRef.current = mouseY;
-  }, [mouseX, mouseY]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -39,136 +112,157 @@ function MovingBackdropDots({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let viewportResize: (() => void) | null = null;
-    let stopped = false;
-    let rafT0: number | null = null;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sin = new Float32Array(TERMS);
+    const cos = new Float32Array(TERMS);
 
-    const rebuildDots = () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      const spacing = 30;
-      const list: BackdropDot[] = [];
-      let row = 0;
-      for (let y = spacing * 0.5; y < h + spacing; y += spacing, row++) {
-        const shift = (row % 2) * (spacing * 0.5);
-        for (let x = spacing * 0.5 + shift; x < w + spacing; x += spacing) {
-          list.push({
-            bx: x,
-            by: y,
-            seed: hashSeed(Math.floor(x), Math.floor(y)) * Math.PI * 2,
-          });
-        }
-      }
-      dotsRef.current = list;
-    };
+    let dpr = 1;
+    let w = 0;
+    let h = 0;
+    let field: DotField = { count: 0, base: new Float32Array(), coef: new Float32Array() };
+    let sprite = buildSprite(dpr);
+    let spriteHalf = 0;
+    let raf = 0;
+    let t0: number | null = null;
+    let lastFrame = 0;
+    let lastPointerMove = 0;
 
     const resize = () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
+      w = window.innerWidth;
+      h = window.innerHeight;
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
-      rebuildDots();
+      field = buildField(w, h);
+      sprite = buildSprite(dpr);
+      spriteHalf = sprite.width / (2 * dpr);
     };
 
-    resize();
-    window.addEventListener("resize", resize);
-    /**
-     * Safari zoom can alter viewport metrics / pixel ratio without firing a classic window resize.
-     * VisualViewport events keep the canvas backing store aligned with CSS pixels.
-     */
-    if (window.visualViewport) {
-      viewportResize = () => resize();
-      window.visualViewport.addEventListener("resize", viewportResize);
-      window.visualViewport.addEventListener("scroll", viewportResize);
-    }
-
-    const draw = (ts: number) => {
-      if (stopped) return;
-
-      if (rafT0 === null) rafT0 = ts;
-      const t = (ts - rafT0) / 1000;
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      const nextDpr = Math.min(window.devicePixelRatio || 1, 2);
-      if (Math.abs(nextDpr - dpr) > 0.001) resize();
-      let mx = mouseXRef.current.get();
-      let my = mouseYRef.current.get();
+    const render = (t: number) => {
+      let mx = mouseX.get();
+      let my = mouseY.get();
       if (!Number.isFinite(mx)) mx = w * 0.5;
       if (!Number.isFinite(my)) my = h * 0.4;
 
+      for (let k = 0; k < TERMS; k++) {
+        sin[k] = Math.sin(FREQS[k]! * t);
+        cos[k] = Math.cos(FREQS[k]! * t);
+      }
+
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
+      ctx.globalAlpha = BASE_ALPHA;
+      let alpha = BASE_ALPHA;
 
-      const influence = 168;
-      const pushMax = 16;
-      const dots = dotsRef.current;
+      const { count, base, coef } = field;
+      const glowRange2 = GLOW_RANGE * GLOW_RANGE;
+      const influence2 = INFLUENCE * INFLUENCE;
 
-      for (let i = 0; i < dots.length; i++) {
-        const { bx, by, seed } = dots[i]!;
-        const ax = bx * 0.019;
-        const ay = by * 0.021;
-        const u = t * 1.65 + seed;
-        const v = t * 2.2 + seed * 0.63;
-
+      for (let i = 0; i < count; i++) {
+        const bx = base[i * 2]!;
+        const by = base[i * 2 + 1]!;
+        const c = i * TERMS * 2;
         let ox =
-          2.75 * Math.sin(u + ax) +
-          1.95 * Math.cos(v * 0.9 - ay) +
-          1.05 * Math.sin(t * 3.05 + seed * 1.65 + ay * 0.4);
+          sin[0]! * coef[c]! + cos[0]! * coef[c + 1]! +
+          sin[1]! * coef[c + 2]! + cos[1]! * coef[c + 3]! +
+          sin[2]! * coef[c + 4]! + cos[2]! * coef[c + 5]!;
         let oy =
-          2.55 * Math.cos(u * 0.88 + ay) +
-          1.75 * Math.sin(v + ax * 0.8) +
-          0.95 * Math.cos(t * 3.2 + seed * 1.4 - ax * 0.35);
+          sin[3]! * coef[c + 6]! + cos[3]! * coef[c + 7]! +
+          sin[4]! * coef[c + 8]! + cos[4]! * coef[c + 9]! +
+          sin[5]! * coef[c + 10]! + cos[5]! * coef[c + 11]!;
 
-        const distAnchor = Math.hypot(bx - mx, by - my);
-        const falloff = distAnchor < influence ? 1 - distAnchor / influence : 0;
-        const stir = 1 + falloff * 0.95;
-        ox *= stir;
-        oy *= stir;
+        const ax = bx - mx;
+        const ay = by - my;
+        const anchor2 = ax * ax + ay * ay;
+        let radius = BASE_RADIUS;
+        let dotAlpha = BASE_ALPHA;
+
+        // Most dots are far from the pointer: they skip the square roots entirely.
+        if (anchor2 < glowRange2) {
+          const distAnchor = Math.sqrt(anchor2);
+          if (distAnchor < INFLUENCE) {
+            const stir = 1 + (1 - distAnchor / INFLUENCE) * 0.95;
+            ox *= stir;
+            oy *= stir;
+          }
+          const glow = 1 - distAnchor / GLOW_RANGE;
+          dotAlpha = BASE_ALPHA + glow * GLOW_ALPHA;
+          radius = BASE_RADIUS + glow * GLOW_RADIUS;
+        }
 
         let px = bx + ox;
         let py = by + oy;
 
-        const dx = px - mx;
-        const dy = py - my;
-        const d = Math.hypot(dx, dy);
-        const pf = d < influence ? 1 - d / influence : 0;
-        const push = pf * pushMax * (1 + pf * 0.25);
-        if (d > 0.5) {
-          px += (dx / d) * push;
-          py += (dy / d) * push;
+        if (anchor2 < glowRange2) {
+          const dx = px - mx;
+          const dy = py - my;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < influence2 && d2 > 0.25) {
+            const d = Math.sqrt(d2);
+            const pf = 1 - d / INFLUENCE;
+            const push = pf * PUSH_MAX * (1 + pf * 0.25);
+            px += (dx / d) * push;
+            py += (dy / d) * push;
+          }
         }
 
-        const glow =
-          distAnchor < influence * 1.5 ? Math.max(0, 1 - distAnchor / (influence * 1.5)) : 0;
-        const alpha = 0.125 + glow * 0.34;
-        const radius = 1.38 + glow * 0.62;
-
-        /* Slightly cooler / whiter than before so dots read a bit brighter on #0e0c14 */
-        ctx.fillStyle = `rgba(248, 246, 253, ${alpha})`;
-        ctx.beginPath();
-        ctx.arc(px, py, radius, 0, Math.PI * 2);
-        ctx.fill();
+        if (dotAlpha !== alpha) {
+          ctx.globalAlpha = dotAlpha;
+          alpha = dotAlpha;
+        }
+        const half = spriteHalf * (radius / MAX_RADIUS);
+        ctx.drawImage(sprite, px - half, py - half, half * 2, half * 2);
       }
-
-      rafRef.current = requestAnimationFrame(draw);
     };
 
-    rafRef.current = requestAnimationFrame(draw);
+    const frame = (ts: number) => {
+      raf = requestAnimationFrame(frame);
+      const budget = ts - lastPointerMove < ACTIVE_WINDOW_MS ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
+      // 1ms of slack so a 60Hz display isn't rounded down to 30fps by timestamp jitter.
+      if (ts - lastFrame < budget - 1) return;
+      lastFrame = ts;
+
+      // Safari zoom can change the pixel ratio without a resize event.
+      if (Math.abs(Math.min(window.devicePixelRatio || 1, 2) - dpr) > 0.001) resize();
+      if (t0 === null) t0 = ts;
+      render((ts - t0) / 1000);
+    };
+
+    const start = () => {
+      cancelAnimationFrame(raf);
+      if (reducedMotion.matches) {
+        // A still field: drawn once, redrawn only when the viewport changes.
+        render(0);
+      } else {
+        raf = requestAnimationFrame(frame);
+      }
+    };
+
+    const onResize = () => {
+      resize();
+      if (reducedMotion.matches) render(0);
+    };
+    const onPointerMove = () => {
+      lastPointerMove = performance.now();
+    };
+
+    resize();
+    start();
+    window.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    reducedMotion.addEventListener("change", start);
 
     return () => {
-      stopped = true;
-      window.removeEventListener("resize", resize);
-      if (window.visualViewport && viewportResize) {
-        window.visualViewport.removeEventListener("resize", viewportResize);
-        window.visualViewport.removeEventListener("scroll", viewportResize);
-      }
-      cancelAnimationFrame(rafRef.current);
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+      window.removeEventListener("pointermove", onPointerMove);
+      reducedMotion.removeEventListener("change", start);
     };
-  }, []);
+  }, [mouseX, mouseY]);
 
   return (
     <canvas
@@ -196,32 +290,45 @@ export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean 
     };
     centerPointer();
 
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       mouseX.set(e.clientX);
       mouseY.set(e.clientY);
     };
-    window.addEventListener("mousemove", onMove);
+    window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("resize", centerPointer);
     return () => {
-      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("pointermove", onMove);
       window.removeEventListener("resize", centerPointer);
     };
   }, [mouseX, mouseY]);
 
   if (disabled) return null;
 
-  const cursorGlow = useMotionTemplate`radial-gradient(52vmin circle at ${spotlightX}px ${spotlightY}px, rgba(118,108,148,0.26) 0%, rgba(82,76,102,0.14) 34%, rgba(48,46,58,0.09) 54%, transparent 72%)`;
-  const cursorCore = useMotionTemplate`radial-gradient(18vmin circle at ${spotlightX}px ${spotlightY}px, rgba(100,94,125,0.14) 0%, transparent 58%)`;
-
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
       <div className="absolute inset-0 z-0" style={{ backgroundColor: BG_BASE }} />
       <div className="onboarding-grid-bg absolute inset-0 z-0 opacity-50" />
 
-      <motion.div className="absolute inset-0 z-[1] opacity-[0.95]" style={{ backgroundImage: cursorGlow }} />
+      {/*
+        The spotlight is a fixed gradient that slides with the pointer. Moving it with a transform
+        stays on the compositor; re-templating a full-screen gradient repainted it every frame.
+      */}
       <motion.div
-        className="absolute inset-0 z-[1] mix-blend-soft-light opacity-80"
-        style={{ backgroundImage: cursorCore }}
+        className="absolute -left-[52vmin] -top-[52vmin] z-[1] size-[104vmin] opacity-[0.95] will-change-transform"
+        style={{
+          x: spotlightX,
+          y: spotlightY,
+          backgroundImage:
+            "radial-gradient(circle closest-side, rgba(118,108,148,0.26) 0%, rgba(82,76,102,0.14) 34%, rgba(48,46,58,0.09) 54%, transparent 72%)",
+        }}
+      />
+      <motion.div
+        className="absolute -left-[18vmin] -top-[18vmin] z-[1] size-[36vmin] mix-blend-soft-light opacity-80 will-change-transform"
+        style={{
+          x: spotlightX,
+          y: spotlightY,
+          backgroundImage: "radial-gradient(circle closest-side, rgba(100,94,125,0.14) 0%, transparent 58%)",
+        }}
       />
 
       <MovingBackdropDots mouseX={spotlightX} mouseY={spotlightY} />

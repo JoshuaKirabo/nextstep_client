@@ -21,9 +21,10 @@ const ACCENT_WORDS = new Set(["next", "step"]);
 const fieldClass =
   "h-12 w-full rounded-xl border bg-field px-4 text-base text-text outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-text-tertiary focus:border-accent/60 focus:ring-[3px] focus:ring-accent/12";
 
-// While the demo types into a field, it wears the focus look so the eye follows along.
+// Fields sit borderless on the card, set apart by tone. While the demo types
+// into a field, it wears the focus look so the eye follows along.
 const fieldTone = (error: string | undefined, typing: boolean) =>
-  error ? "border-error/60" : typing ? "border-accent/60 ring-[3px] ring-accent/12" : "border-line";
+  error ? "border-error/60" : typing ? "border-accent/60 ring-[3px] ring-accent/12" : "border-transparent";
 
 // Floema's uppercase nav treatment: 12px, regular weight, -0.02em, 1.4 line height.
 const labelClass = "mb-2 block text-xs font-normal uppercase leading-[1.4] tracking-[-0.02em] text-text-secondary";
@@ -120,10 +121,7 @@ export function LoginScreen() {
 
   return (
     <main className="relative flex min-h-dvh items-center justify-center px-4 py-12 sm:px-8">
-      {/* Dimmed so the dots stay atmosphere, not a feature competing with the form. */}
-      <div className="opacity-60">
-        <MovingDotsAtmosphere />
-      </div>
+      <MovingDotsAtmosphere />
 
       <div className="relative grid w-full max-w-5xl items-center gap-12 lg:grid-cols-[1fr_400px] lg:gap-20">
         <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
