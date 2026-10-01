@@ -1,13 +1,5 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
 import "./globals.css";
-
-// Fallback for the tagline on non-Apple devices, where SF Pro isn't available.
-const geist = Geist({
-  variable: "--font-geist",
-  subsets: ["latin"],
-  weight: ["500"],
-});
 
 export const metadata: Metadata = {
   title: "NextStep",
@@ -17,7 +9,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // The intro script below sets data-intro before hydration, so React must not flag it.
-    <html lang="en" className={`${geist.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
         {/*
           Returning visitors get a short intro. Decided before first paint so the

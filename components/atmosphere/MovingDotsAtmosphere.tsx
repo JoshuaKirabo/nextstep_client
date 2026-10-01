@@ -16,10 +16,34 @@ const BASE_RADIUS = 1.38;
 const GLOW_RADIUS = 0.62;
 const MAX_RADIUS = BASE_RADIUS + GLOW_RADIUS;
 
-/* Full rate while the pointer (and its spring) is moving; the idle drift is a few px/s, so half rate is plenty. */
+/* Full rate while the pointer (and its spring) is moving; the settling fades are slow, so half rate is plenty. */
 const ACTIVE_FRAME_MS = 1000 / 60;
 const IDLE_FRAME_MS = 1000 / 30;
 const ACTIVE_WINDOW_MS = 1200;
+
+/*
+ * The field settles. Dots wobble through the entrance, then go still; after that only dots near
+ * the pointer stir, and only while it moves. Once everything is at rest the loop stops entirely,
+ * so nothing moves while someone reads or types.
+ */
+const INTRO_HOLD_S = 1.4;
+const INTRO_FADE_S = 1.6;
+const SHORT_INTRO_HOLD_S = 0.3;
+const SHORT_INTRO_FADE_S = 1.2;
+/* A pointer counts as moving for this long after its last event. */
+const POINTER_MOVING_MS = 120;
+/* Stir energy rises fast (~150ms) and fades over ~1.2s (time constants, in seconds). */
+const STIR_RISE_S = 0.06;
+const STIR_FADE_S = 0.4;
+/* The spotlight spring is heavily damped and creeps sub-pixel for seconds; below this it reads as still. */
+const SPRING_SETTLED_PX_S = 3;
+
+/* Full energy through the hold, then a cosine ease down to zero. */
+function introEnergy(elapsed: number, hold: number, fade: number): number {
+  if (elapsed <= hold) return 1;
+  const progress = (elapsed - hold) / fade;
+  return progress >= 1 ? 0 : 0.5 * (1 + Math.cos(Math.PI * progress));
+}
 
 /*
  * Each dot wobbles by a sum of six sines, A·sin(ωt + φ). The frequencies are shared and only the
@@ -90,7 +114,7 @@ function buildSprite(dpr: number): HTMLCanvasElement {
   sprite.width = size;
   sprite.height = size;
   const sctx = sprite.getContext("2d")!;
-  sctx.fillStyle = "rgb(248, 246, 253)";
+  sctx.fillStyle = "#ffffff";
   sctx.beginPath();
   sctx.arc(size / 2, size / 2, MAX_RADIUS * dpr, 0, Math.PI * 2);
   sctx.fill();
@@ -125,7 +149,11 @@ function MovingBackdropDots({
     let raf = 0;
     let t0: number | null = null;
     let lastFrame = 0;
-    let lastPointerMove = 0;
+    let lastPointerMove = -Infinity;
+    let stir = 0;
+    const shortIntro = document.documentElement.dataset.intro === "short";
+    const introHold = shortIntro ? SHORT_INTRO_HOLD_S : INTRO_HOLD_S;
+    const introFade = shortIntro ? SHORT_INTRO_FADE_S : INTRO_FADE_S;
 
     const resize = () => {
       w = window.innerWidth;
@@ -140,15 +168,19 @@ function MovingBackdropDots({
       spriteHalf = sprite.width / (2 * dpr);
     };
 
-    const render = (t: number) => {
+    /* `intro` scales every dot's wobble; `stirEnergy` scales it only near the pointer. */
+    const render = (t: number, intro: number, stirEnergy: number) => {
       let mx = mouseX.get();
       let my = mouseY.get();
       if (!Number.isFinite(mx)) mx = w * 0.5;
       if (!Number.isFinite(my)) my = h * 0.4;
 
-      for (let k = 0; k < TERMS; k++) {
-        sin[k] = Math.sin(FREQS[k]! * t);
-        cos[k] = Math.cos(FREQS[k]! * t);
+      const moving = intro > 0 || stirEnergy > 0;
+      if (moving) {
+        for (let k = 0; k < TERMS; k++) {
+          sin[k] = Math.sin(FREQS[k]! * t);
+          cos[k] = Math.cos(FREQS[k]! * t);
+        }
       }
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -163,33 +195,38 @@ function MovingBackdropDots({
       for (let i = 0; i < count; i++) {
         const bx = base[i * 2]!;
         const by = base[i * 2 + 1]!;
-        const c = i * TERMS * 2;
-        let ox =
-          sin[0]! * coef[c]! + cos[0]! * coef[c + 1]! +
-          sin[1]! * coef[c + 2]! + cos[1]! * coef[c + 3]! +
-          sin[2]! * coef[c + 4]! + cos[2]! * coef[c + 5]!;
-        let oy =
-          sin[3]! * coef[c + 6]! + cos[3]! * coef[c + 7]! +
-          sin[4]! * coef[c + 8]! + cos[4]! * coef[c + 9]! +
-          sin[5]! * coef[c + 10]! + cos[5]! * coef[c + 11]!;
 
         const ax = bx - mx;
         const ay = by - my;
         const anchor2 = ax * ax + ay * ay;
         let radius = BASE_RADIUS;
         let dotAlpha = BASE_ALPHA;
+        let amp = intro;
 
         // Most dots are far from the pointer: they skip the square roots entirely.
         if (anchor2 < glowRange2) {
           const distAnchor = Math.sqrt(anchor2);
-          if (distAnchor < INFLUENCE) {
-            const stir = 1 + (1 - distAnchor / INFLUENCE) * 0.95;
-            ox *= stir;
-            oy *= stir;
-          }
           const glow = 1 - distAnchor / GLOW_RANGE;
+          amp = Math.max(amp, stirEnergy * glow);
+          if (distAnchor < INFLUENCE) amp *= 1 + (1 - distAnchor / INFLUENCE) * 0.95;
           dotAlpha = BASE_ALPHA + glow * GLOW_ALPHA;
           radius = BASE_RADIUS + glow * GLOW_RADIUS;
+        }
+
+        let ox = 0;
+        let oy = 0;
+        if (moving && amp > 0.001) {
+          const c = i * TERMS * 2;
+          ox =
+            amp *
+            (sin[0]! * coef[c]! + cos[0]! * coef[c + 1]! +
+              sin[1]! * coef[c + 2]! + cos[1]! * coef[c + 3]! +
+              sin[2]! * coef[c + 4]! + cos[2]! * coef[c + 5]!);
+          oy =
+            amp *
+            (sin[3]! * coef[c + 6]! + cos[3]! * coef[c + 7]! +
+              sin[4]! * coef[c + 8]! + cos[4]! * coef[c + 9]! +
+              sin[5]! * coef[c + 10]! + cos[5]! * coef[c + 11]!);
         }
 
         let px = bx + ox;
@@ -222,30 +259,57 @@ function MovingBackdropDots({
       const budget = ts - lastPointerMove < ACTIVE_WINDOW_MS ? ACTIVE_FRAME_MS : IDLE_FRAME_MS;
       // 1ms of slack so a 60Hz display isn't rounded down to 30fps by timestamp jitter.
       if (ts - lastFrame < budget - 1) return;
+      const dt = lastFrame ? Math.min(ts - lastFrame, 100) / 1000 : 0;
       lastFrame = ts;
 
       // Safari zoom can change the pixel ratio without a resize event.
       if (Math.abs(Math.min(window.devicePixelRatio || 1, 2) - dpr) > 0.001) resize();
       if (t0 === null) t0 = ts;
-      render((ts - t0) / 1000);
+      const elapsed = (ts - t0) / 1000;
+
+      const target = ts - lastPointerMove < POINTER_MOVING_MS ? 1 : 0;
+      const tau = target > stir ? STIR_RISE_S : STIR_FADE_S;
+      stir += (target - stir) * (1 - Math.exp(-dt / tau));
+      if (target === 0 && stir < 0.005) stir = 0;
+
+      const intro = introEnergy(elapsed, introHold, introFade);
+      render(elapsed, intro, stir);
+
+      // At rest: stop the loop until the pointer, its spring or the viewport changes.
+      if (intro === 0 && stir === 0 && !springMoving()) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+
+    const springMoving = () =>
+      Math.abs(mouseX.getVelocity()) > SPRING_SETTLED_PX_S || Math.abs(mouseY.getVelocity()) > SPRING_SETTLED_PX_S;
+
+    const wake = () => {
+      if (raf || reducedMotion.matches) return;
+      lastFrame = 0;
+      raf = requestAnimationFrame(frame);
     };
 
     const start = () => {
       cancelAnimationFrame(raf);
+      raf = 0;
       if (reducedMotion.matches) {
         // A still field: drawn once, redrawn only when the viewport changes.
-        render(0);
+        render(0, 0, 0);
       } else {
-        raf = requestAnimationFrame(frame);
+        wake();
       }
     };
 
     const onResize = () => {
       resize();
-      if (reducedMotion.matches) render(0);
+      if (reducedMotion.matches) render(0, 0, 0);
+      else wake();
     };
     const onPointerMove = () => {
       lastPointerMove = performance.now();
+      wake();
     };
 
     resize();
@@ -254,6 +318,12 @@ function MovingBackdropDots({
     window.visualViewport?.addEventListener("resize", onResize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     reducedMotion.addEventListener("change", start);
+    // The spotlight spring keeps gliding after the pointer stops (or after it leaves): follow it.
+    const onSpringChange = () => {
+      if (springMoving()) wake();
+    };
+    const unsubscribeX = mouseX.on("change", onSpringChange);
+    const unsubscribeY = mouseY.on("change", onSpringChange);
 
     return () => {
       cancelAnimationFrame(raf);
@@ -261,6 +331,8 @@ function MovingBackdropDots({
       window.visualViewport?.removeEventListener("resize", onResize);
       window.removeEventListener("pointermove", onPointerMove);
       reducedMotion.removeEventListener("change", start);
+      unsubscribeX();
+      unsubscribeY();
     };
   }, [mouseX, mouseY]);
 
@@ -274,7 +346,8 @@ function MovingBackdropDots({
 }
 
 /**
- * Full-viewport animated dot field + soft cursor spotlight (matches Brain Dump).
+ * Full-viewport dot field + soft cursor spotlight (matches Brain Dump). The dots stir through the
+ * entrance and near a moving pointer, and are otherwise still.
  * Render once inside a `relative` page root; keep page chrome backgrounds translucent where dots should show.
  */
 export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean }) {
@@ -294,11 +367,15 @@ export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean 
       mouseX.set(e.clientX);
       mouseY.set(e.clientY);
     };
+    // When the pointer leaves the window, the glow drifts home instead of waiting in a corner.
+    const root = document.documentElement;
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("resize", centerPointer);
+    root.addEventListener("mouseleave", centerPointer);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("resize", centerPointer);
+      root.removeEventListener("mouseleave", centerPointer);
     };
   }, [mouseX, mouseY]);
 
@@ -307,7 +384,6 @@ export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
       <div className="absolute inset-0 z-0" style={{ backgroundColor: BG_BASE }} />
-      <div className="onboarding-grid-bg absolute inset-0 z-0 opacity-50" />
 
       {/*
         The spotlight is a fixed gradient that slides with the pointer. Moving it with a transform
@@ -319,7 +395,7 @@ export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean 
           x: spotlightX,
           y: spotlightY,
           backgroundImage:
-            "radial-gradient(circle closest-side, rgba(118,108,148,0.26) 0%, rgba(82,76,102,0.14) 34%, rgba(48,46,58,0.09) 54%, transparent 72%)",
+            "radial-gradient(circle closest-side, rgba(214,213,255,0.13) 0%, rgba(214,213,255,0.06) 34%, rgba(214,213,255,0.03) 54%, transparent 72%)",
         }}
       />
       <motion.div
@@ -327,7 +403,7 @@ export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean 
         style={{
           x: spotlightX,
           y: spotlightY,
-          backgroundImage: "radial-gradient(circle closest-side, rgba(100,94,125,0.14) 0%, transparent 58%)",
+          backgroundImage: "radial-gradient(circle closest-side, rgba(214,213,255,0.1) 0%, transparent 58%)",
         }}
       />
 

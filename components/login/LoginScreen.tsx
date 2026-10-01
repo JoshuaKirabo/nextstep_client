@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useReducedMotion } from "framer-motion";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { MovingDotsAtmosphere } from "@/components/atmosphere/MovingDotsAtmosphere";
 
 type FieldErrors = { username?: string; password?: string };
@@ -19,15 +19,40 @@ const HEADLINE = [["Your", "next", "step"], ["is", "waiting."]];
 const ACCENT_WORDS = new Set(["next", "step"]);
 
 const fieldClass =
-  "h-12 w-full rounded-xl border bg-field px-4 text-base text-text outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-text-tertiary focus:border-accent/60 focus:ring-[3px] focus:ring-accent/12";
+  "h-12 w-full rounded-xl border bg-field px-4 text-base text-text outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-text-tertiary";
 
-// Fields sit borderless on the card, set apart by tone. While the demo types
-// into a field, it wears the focus look so the eye follows along.
+// Fields rest on a faint line so they read as fields even when empty. An error
+// keeps its colour through focus, so the field you're sent to fix looks wrong.
+// While the demo types into a field, it wears the focus look so the eye follows along.
 const fieldTone = (error: string | undefined, typing: boolean) =>
-  error ? "border-error/60" : typing ? "border-accent/60 ring-[3px] ring-accent/12" : "border-transparent";
+  error
+    ? "border-error/60 focus:border-error/70 focus:ring-[3px] focus:ring-error/15"
+    : typing
+      ? "border-accent/60 ring-[3px] ring-accent/12"
+      : "border-line focus:border-accent/60 focus:ring-[3px] focus:ring-accent/12";
 
-// Floema's uppercase nav treatment: 12px, regular weight, -0.02em, 1.4 line height.
-const labelClass = "mb-2 block text-xs font-normal uppercase leading-[1.4] tracking-[-0.02em] text-text-secondary";
+const labelClass = "block text-[0.8125rem] font-medium leading-5 text-text-secondary";
+
+const linkClass =
+  "rounded-sm font-medium transition-colors duration-150 hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
+// UI only: these links have no destinations until the account flows exist.
+const placeholderLink = (event: MouseEvent<HTMLAnchorElement>) => event.preventDefault();
+
+// Chrome fills saved logins before any script sees an input event, so ask the field itself.
+const isAutofilled = (input: HTMLInputElement | null) => {
+  if (!input) return false;
+  if (input.value) return true;
+  try {
+    return input.matches(":autofill");
+  } catch {
+    try {
+      return input.matches(":-webkit-autofill");
+    } catch {
+      return false;
+    }
+  }
+};
 
 export function LoginScreen() {
   const reduceMotion = useReducedMotion();
@@ -40,6 +65,7 @@ export function LoginScreen() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [demoField, setDemoField] = useState<DemoField | null>(null);
   const demoStopped = useRef(false);
+  const demoFilled = useRef(false);
 
   // The full intro is for the first visit; the layout's head script reads this flag.
   useEffect(() => {
@@ -48,10 +74,15 @@ export function LoginScreen() {
     } catch {}
   }, []);
 
-  // ⚠️ DEMO ONLY — types the demo account in once the card has arrived. Any
-  // focus, edit or submit hands the form back to the person.
+  // ⚠️ DEMO ONLY — fills the demo account in once the card has arrived. First
+  // visits watch it type; returning visits (and reduced motion) get it at once.
   useEffect(() => {
     let timer = 0;
+    const fill = () => {
+      setUsername(DEMO_CREDENTIALS.username);
+      setPassword(DEMO_CREDENTIALS.password);
+      demoFilled.current = true;
+    };
     const type = (field: DemoField, speedMs: number, then?: () => void) => {
       const text = DEMO_CREDENTIALS[field];
       const set = field === "username" ? setUsername : setPassword;
@@ -71,29 +102,41 @@ export function LoginScreen() {
       timer = window.setTimeout(tick, speedMs);
     };
 
+    const shortIntro = document.documentElement.dataset.intro === "short";
+    const instant = shortIntro || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Wait for the card's entrance: ~0.9s on a first visit, 0.3s after that.
-    const startDelay = document.documentElement.dataset.intro === "short" ? 400 : 1000;
+    const startDelay = shortIntro ? 400 : 1000;
 
-    // Reduced motion: the account arrives filled in, without the typing.
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      timer = window.setTimeout(() => {
-        if (demoStopped.current) return;
-        setUsername(DEMO_CREDENTIALS.username);
-        setPassword(DEMO_CREDENTIALS.password);
-      }, startDelay);
-      return () => window.clearTimeout(timer);
-    }
-
-    timer = window.setTimeout(
-      () => type("username", 70, () => (timer = window.setTimeout(() => type("password", 50), 300))),
-      startDelay,
-    );
+    timer = window.setTimeout(() => {
+      if (demoStopped.current) return;
+      // The browser already filled a saved login: leave it alone.
+      if (isAutofilled(usernameRef.current) || isAutofilled(passwordRef.current)) {
+        demoStopped.current = true;
+        return;
+      }
+      if (instant) {
+        fill();
+        return;
+      }
+      type("username", 70, () => {
+        timer = window.setTimeout(() => type("password", 50, () => (demoFilled.current = true)), 300);
+      });
+    }, startDelay);
     return () => window.clearTimeout(timer);
   }, []);
 
-  const stopDemo = () => {
+  // Any focus, edit or submit hands the form back to the person. A demo cut short
+  // finishes at once rather than leaving half an account behind. Returns true if
+  // it filled the fields just now (state won't show them until the next render).
+  const takeOver = () => {
+    if (demoStopped.current) return false;
     demoStopped.current = true;
     setDemoField(null);
+    if (demoFilled.current) return false;
+    setUsername(DEMO_CREDENTIALS.username);
+    setPassword(DEMO_CREDENTIALS.password);
+    demoFilled.current = true;
+    return true;
   };
 
   // The macOS "wrong password" shake: a decaying horizontal wobble.
@@ -107,11 +150,13 @@ export function LoginScreen() {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    stopDemo();
+    const justFilled = takeOver();
+    const submittedUsername = justFilled ? DEMO_CREDENTIALS.username : username;
+    const submittedPassword = justFilled ? DEMO_CREDENTIALS.password : password;
 
     const errors: FieldErrors = {};
-    if (!username.trim()) errors.username = "Enter your username.";
-    if (!password) errors.password = "Enter your password.";
+    if (!submittedUsername.trim()) errors.username = "Enter your username.";
+    if (!submittedPassword) errors.password = "Enter your password.";
     setFieldErrors(errors);
     if (errors.username || errors.password) {
       (errors.username ? usernameRef : passwordRef).current?.focus();
@@ -120,24 +165,27 @@ export function LoginScreen() {
   };
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center px-4 py-12 sm:px-8">
+    <main className="relative flex min-h-dvh items-center justify-center px-4 py-8 sm:px-8 sm:py-12">
       <MovingDotsAtmosphere />
 
-      <div className="relative grid w-full max-w-5xl items-center gap-12 lg:grid-cols-[1fr_400px] lg:gap-20">
+      <div className="relative grid w-full max-w-5xl items-center gap-9 sm:gap-12 lg:grid-cols-[1fr_400px] lg:gap-20">
         <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
-          <div className="rise mb-10 flex items-center gap-3 lg:mb-14">
+          <div className="rise mb-7 flex items-center gap-3 sm:mb-10 lg:mb-14">
             <Image src="/logos/next_step_favicon.png" alt="" width={32} height={36} className="h-9 w-auto" priority />
-            <Image
-              src="/logos/next_step_logo_words_1.png"
-              alt="NextStep"
-              width={131}
-              height={40}
-              className="h-10 w-auto"
-              priority
-            />
+            {/* The wordmark file has ~39% empty space above the letters; the window crops it to the glyphs. */}
+            <span className="block h-7 overflow-hidden">
+              <Image
+                src="/logos/next_step_logo_words_1.png"
+                alt="NextStep"
+                width={151}
+                height={46}
+                className="-mt-[1.125rem] h-[2.875rem] w-auto max-w-none"
+                priority
+              />
+            </span>
           </div>
 
-          <h1 className="font-display text-[clamp(2.75rem,7vw,4.75rem)] font-semibold leading-[0.98] tracking-[-0.035em]">
+          <h1 className="font-display text-[clamp(2.75rem,7vw,4.75rem)] font-semibold leading-[0.98] tracking-[-0.02em] lg:tracking-[-0.035em]">
             {HEADLINE.map((line, lineIndex) => (
               <span key={lineIndex} className="block">
                 {line.map((word, wordIndex) => (
@@ -146,21 +194,13 @@ export function LoginScreen() {
                     {(lineIndex > 0 || wordIndex > 0) && " "}
                     {/* The mask is padded so glyph overhangs (the P's stem, descenders) aren't clipped. */}
                     <span className="-ml-[0.06em] inline-block overflow-hidden pb-[0.1em] pl-[0.06em] pr-[0.04em] align-bottom">
-                      {/* "next step" rises in plain text, then the accent fades in over it (via ::after). */}
+                      {/* "next step" carries the accent from the start, laid over the plain text (via ::after). */}
                       <span
                         className={`word-rise relative inline-block ${ACCENT_WORDS.has(word) ? "headline-accent" : ""}`}
                         data-accent={ACCENT_WORDS.has(word) ? word : undefined}
                         style={{ animationDelay: `${0.12 + (lineIndex * 3 + wordIndex) * 0.06}s` }}
                       >
-                        {word.endsWith(".") ? (
-                          <>
-                            {word.slice(0, -1)}
-                            {/* The period lands a beat after its word. */}
-                            <span className="headline-period">.</span>
-                          </>
-                        ) : (
-                          word
-                        )}
+                        {word}
                       </span>
                     </span>
                   </span>
@@ -171,11 +211,11 @@ export function LoginScreen() {
 
           <p
             style={{ animationDelay: "0.5s" }}
-            className="rise mt-6 max-w-[28rem] font-system text-[clamp(1.25rem,1.8vw,1.5rem)] font-medium leading-[1.3] tracking-[-0.022em] text-text-tertiary"
+            className="rise mt-6 max-w-[28rem] text-[clamp(1.25rem,1.8vw,1.5rem)] font-medium leading-[1.3] tracking-[-0.015em] text-text-tertiary"
           >
-            {/* Apple's two-tone sentence: the lead in full white, the rest recedes. */}
-            <span className="text-text">Turn the pile in your head</span>
-            <br className="hidden sm:block" /> <span className="subhead-tail">into one clear step at a time.</span>
+            {/* Apple's two-tone sentence: the lead in full white, the rest recedes. Two lines at every width. */}
+            <span className="block text-text">Turn the pile in your head</span>{" "}
+            <span className="subhead-tail block">into one clear step at a time.</span>
           </p>
         </section>
 
@@ -186,14 +226,11 @@ export function LoginScreen() {
           noValidate
           className="rise login-card mx-auto w-full max-w-[400px] rounded-3xl p-7 sm:p-8"
         >
-          <div className="flex items-end justify-between">
-            <h2 className="font-display text-[1.625rem] font-semibold leading-none tracking-[-0.02em]">Sign in</h2>
-            <Image src="/logos/next_step_favicon.png" alt="" width={22} height={25} className="h-6 w-auto" />
-          </div>
+          <h2 className="font-display text-[1.625rem] font-semibold leading-none tracking-[-0.02em]">Sign in</h2>
 
-          <div className="mt-7 space-y-3">
+          <div className="mt-7 space-y-4">
             <div>
-              <label htmlFor="username" className={labelClass}>
+              <label htmlFor="username" className={`${labelClass} mb-2`}>
                 Username
               </label>
               <input
@@ -205,9 +242,9 @@ export function LoginScreen() {
                 autoCorrect="off"
                 spellCheck={false}
                 value={username}
-                onFocus={stopDemo}
+                onFocus={takeOver}
                 onChange={(event) => {
-                  stopDemo();
+                  takeOver();
                   setUsername(event.target.value);
                   setFieldErrors((errors) => ({ ...errors, username: undefined }));
                 }}
@@ -215,15 +252,20 @@ export function LoginScreen() {
                 aria-describedby={fieldErrors.username ? "username-error" : undefined}
                 className={`${fieldClass} ${fieldTone(fieldErrors.username, demoField === "username")}`}
               />
-              <p id="username-error" className="mt-1.5 h-5 text-[0.8125rem] leading-5 text-error">
-                {fieldErrors.username}
+              <p id="username-error" className="mt-1 h-5 text-[0.8125rem] leading-5 text-error">
+                {fieldErrors.username && <span className="field-error block">{fieldErrors.username}</span>}
               </p>
             </div>
 
             <div>
-              <label htmlFor="password" className={labelClass}>
-                Password
-              </label>
+              <div className="mb-2 flex items-baseline justify-between gap-4">
+                <label htmlFor="password" className={labelClass}>
+                  Password
+                </label>
+                <a href="#" onClick={placeholderLink} className={`${linkClass} text-[0.8125rem] text-text-secondary`}>
+                  Forgot password?
+                </a>
+              </div>
               <div className="relative">
                 <input
                   ref={passwordRef}
@@ -232,9 +274,9 @@ export function LoginScreen() {
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
-                  onFocus={stopDemo}
+                  onFocus={takeOver}
                   onChange={(event) => {
-                    stopDemo();
+                    takeOver();
                     setPassword(event.target.value);
                     setFieldErrors((errors) => ({ ...errors, password: undefined }));
                   }}
@@ -247,20 +289,27 @@ export function LoginScreen() {
                   onClick={() => setShowPassword((shown) => !shown)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   aria-pressed={showPassword}
-                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-text-tertiary transition-colors hover:text-text-secondary focus-visible:text-text focus-visible:outline-none"
+                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-text-tertiary transition-colors hover:text-text-secondary focus-visible:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70"
                 >
                   <EyeIcon crossed={showPassword} />
                 </button>
               </div>
-              <p id="password-error" className="mt-1.5 h-5 text-[0.8125rem] leading-5 text-error">
-                {fieldErrors.password}
+              <p id="password-error" className="mt-1 h-5 text-[0.8125rem] leading-5 text-error">
+                {fieldErrors.password && <span className="field-error block">{fieldErrors.password}</span>}
               </p>
             </div>
           </div>
 
-          <button type="submit" className="primary-button mt-5">
+          <button type="submit" className="primary-button mt-3">
             Sign in
           </button>
+
+          <p className="mt-5 text-center text-[0.8125rem] text-text-secondary">
+            New here?{" "}
+            <a href="#" onClick={placeholderLink} className={`${linkClass} text-text`}>
+              Create an account
+            </a>
+          </p>
         </form>
       </div>
     </main>
