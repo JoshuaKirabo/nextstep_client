@@ -19,9 +19,9 @@ const HEADLINE = [["Your", "next", "step"], ["is", "waiting."]];
 const ACCENT_WORDS = new Set(["next", "step"]);
 
 const fieldClass =
-  "h-12 w-full rounded-xl border bg-field px-4 text-base text-text outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-text-tertiary";
+  "h-12 w-full rounded-xl border bg-transparent px-4 text-base text-text outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-text-tertiary";
 
-// Fields rest on a faint line so they read as fields even when empty. An error
+// Fields are drawn by their outline alone, strong enough to read even when empty. An error
 // keeps its colour through focus, so the field you're sent to fix looks wrong.
 // While the demo types into a field, it wears the focus look so the eye follows along.
 const fieldTone = (error: string | undefined, typing: boolean) =>
@@ -29,12 +29,13 @@ const fieldTone = (error: string | undefined, typing: boolean) =>
     ? "border-error/60 focus:border-error/70 focus:ring-[3px] focus:ring-error/15"
     : typing
       ? "border-accent/60 ring-[3px] ring-accent/12"
-      : "border-line focus:border-accent/60 focus:ring-[3px] focus:ring-accent/12";
+      : "border-line-strong focus:border-accent/60 focus:ring-[3px] focus:ring-accent/12";
 
 const labelClass = "block text-[0.8125rem] font-medium leading-5 text-text-secondary";
 
+// Links are the logo's lavender at rest, so they never pass for a label; white on hover.
 const linkClass =
-  "rounded-sm font-medium transition-colors duration-150 hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+  "rounded-sm font-medium text-accent transition-[color,opacity] duration-150 hover:text-text active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 // UI only: these links have no destinations until the account flows exist.
 const placeholderLink = (event: MouseEvent<HTMLAnchorElement>) => event.preventDefault();
@@ -262,7 +263,7 @@ export function LoginScreen() {
                 <label htmlFor="password" className={labelClass}>
                   Password
                 </label>
-                <a href="#" onClick={placeholderLink} className={`${linkClass} text-[0.8125rem] text-text-secondary`}>
+                <a href="#" onClick={placeholderLink} className={`${linkClass} text-[0.8125rem]`}>
                   Forgot password?
                 </a>
               </div>
@@ -289,7 +290,7 @@ export function LoginScreen() {
                   onClick={() => setShowPassword((shown) => !shown)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   aria-pressed={showPassword}
-                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-text-tertiary transition-colors hover:text-text-secondary focus-visible:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70"
+                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-text-tertiary transition-colors hover:text-text-secondary active:text-text focus-visible:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70"
                 >
                   <EyeIcon crossed={showPassword} />
                 </button>
@@ -306,7 +307,7 @@ export function LoginScreen() {
 
           <p className="mt-5 text-center text-[0.8125rem] text-text-secondary">
             New here?{" "}
-            <a href="#" onClick={placeholderLink} className={`${linkClass} text-text`}>
+            <a href="#" onClick={placeholderLink} className={linkClass}>
               Create an account
             </a>
           </p>

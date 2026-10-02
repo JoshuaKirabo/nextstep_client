@@ -7,12 +7,12 @@
 :root {
   --bg: #0e0c14;
   --surface: #16141d;
-  --field: #0f0d15;
   --line: rgb(255 255 255 / 0.08);
   --line-strong: rgb(255 255 255 / 0.16);
   --text: #ffffff;
   --text-secondary: #a6a1b3;
-  --text-tertiary: #77727f;
+  /* Receded text (the subhead's second line, placeholders) still clears 4.5:1, even under the spotlight. */
+  --text-tertiary: #8a8596;
   --accent: #d6d5ff;
   --on-light: #1b1726;
   --error: #ffb4ab;
@@ -21,7 +21,6 @@
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
-  --color-field: var(--field);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-text: var(--text);
@@ -207,6 +206,6 @@ input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
   -webkit-text-fill-color: var(--text);
   caret-color: var(--text);
-  box-shadow: 0 0 0 1000px var(--field) inset;
+  box-shadow: 0 0 0 1000px var(--surface) inset;
   transition: background-color 9999s;
 }

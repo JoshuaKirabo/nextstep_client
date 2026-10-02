@@ -5,6 +5,8 @@ import { useEffect, useRef } from "react";
 
 const BG_BASE = "#0e0c14";
 const BG_VIGNETTE_EDGE = "rgba(8,6,14,0.88)";
+/* damping / (2·√(stiffness·mass)) ≈ 1.0; response 2π/√(stiffness/mass) ≈ 0.8s. */
+const SPOTLIGHT_SPRING = { stiffness: 34, damping: 8.6, mass: 0.55 };
 
 const SPACING = 30;
 const INFLUENCE = 168;
@@ -353,8 +355,9 @@ function MovingBackdropDots({
 export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean }) {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
-  const spotlightX = useSpring(mouseX, { stiffness: 42, damping: 24, mass: 0.55 });
-  const spotlightY = useSpring(mouseY, { stiffness: 42, damping: 24, mass: 0.55 });
+  // Critically damped (ratio ≈ 1.0) with a ~0.8s response: a soft follow that settles without creeping.
+  const spotlightX = useSpring(mouseX, SPOTLIGHT_SPRING);
+  const spotlightY = useSpring(mouseY, SPOTLIGHT_SPRING);
 
   useEffect(() => {
     const centerPointer = () => {
@@ -362,6 +365,9 @@ export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean 
       mouseY.set(window.innerHeight * 0.38);
     };
     centerPointer();
+    // Start the glow where it rests, rather than gliding in from the (0, 0) corner.
+    spotlightX.jump(mouseX.get());
+    spotlightY.jump(mouseY.get());
 
     const onMove = (e: PointerEvent) => {
       mouseX.set(e.clientX);
@@ -377,7 +383,7 @@ export function MovingDotsAtmosphere({ disabled = false }: { disabled?: boolean 
       window.removeEventListener("resize", centerPointer);
       root.removeEventListener("mouseleave", centerPointer);
     };
-  }, [mouseX, mouseY]);
+  }, [mouseX, mouseY, spotlightX, spotlightY]);
 
   if (disabled) return null;
 
