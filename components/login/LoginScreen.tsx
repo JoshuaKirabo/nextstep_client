@@ -31,7 +31,8 @@ const fieldTone = (error: string | undefined, typing: boolean) =>
       ? "border-accent/60 ring-[3px] ring-accent/12"
       : "border-line-strong focus:border-accent/60 focus:ring-[3px] focus:ring-accent/12";
 
-const labelClass = "block text-[0.8125rem] font-medium leading-5 text-text-secondary";
+// All caps reads cramped at this size, so it gets a little extra tracking.
+const labelClass = "block text-xs font-medium uppercase leading-5 tracking-[0.06em] text-text-secondary";
 
 // Links are the logo's lavender at rest, so they never pass for a label; white on hover.
 const linkClass =
@@ -166,13 +167,12 @@ export function LoginScreen() {
   };
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center px-4 py-8 sm:px-8 sm:py-12">
+    <main className="relative flex min-h-dvh items-center justify-center px-4 py-8 sm:px-8 sm:py-12 short:py-5">
       <MovingDotsAtmosphere />
 
-      <div className="relative grid w-full max-w-5xl items-center gap-9 sm:gap-12 lg:grid-cols-[1fr_400px] lg:gap-20">
+      <div className="relative grid w-full max-w-5xl items-center gap-9 sm:gap-12 short:gap-5 lg:grid-cols-[1fr_400px] lg:gap-20">
         <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
-          <div className="rise mb-7 flex items-center gap-3 sm:mb-10 lg:mb-14">
-            <Image src="/logos/next_step_favicon.png" alt="" width={32} height={36} className="h-9 w-auto" priority />
+          <div className="rise mb-7 flex items-center sm:mb-10 short:mb-4 lg:mb-14">
             {/* The wordmark file has ~39% empty space above the letters; the window crops it to the glyphs. */}
             <span className="block h-7 overflow-hidden">
               <Image
@@ -186,7 +186,7 @@ export function LoginScreen() {
             </span>
           </div>
 
-          <h1 className="font-display text-[clamp(2.75rem,7vw,4.75rem)] font-semibold leading-[0.98] tracking-[-0.02em] lg:tracking-[-0.035em]">
+          <h1 className="font-display text-[clamp(2.75rem,7vw,4.75rem)] font-semibold short:text-[2.25rem] leading-[0.98] tracking-[-0.02em] lg:tracking-[-0.035em]">
             {HEADLINE.map((line, lineIndex) => (
               <span key={lineIndex} className="block">
                 {line.map((word, wordIndex) => (
@@ -212,7 +212,7 @@ export function LoginScreen() {
 
           <p
             style={{ animationDelay: "0.5s" }}
-            className="rise mt-6 max-w-[28rem] text-[clamp(1.25rem,1.8vw,1.5rem)] font-medium leading-[1.3] tracking-[-0.015em] text-text-tertiary"
+            className="rise mt-6 max-w-[28rem] short:hidden text-[clamp(1.25rem,1.8vw,1.5rem)] font-medium leading-[1.3] tracking-[-0.015em] text-text-tertiary"
           >
             {/* Apple's two-tone sentence: the lead in full white, the rest recedes. Two lines at every width. */}
             <span className="block text-text">Turn the pile in your head</span>{" "}
@@ -225,11 +225,19 @@ export function LoginScreen() {
           ref={formRef}
           onSubmit={handleSubmit}
           noValidate
-          className="rise login-card mx-auto w-full max-w-[400px] rounded-3xl p-7 sm:p-8"
+          aria-label="Sign in"
+          className="rise login-card mx-auto w-full max-w-[400px] rounded-3xl p-7 sm:p-8 short:p-6"
         >
-          <h2 className="font-display text-[1.625rem] font-semibold leading-none tracking-[-0.02em]">Sign in</h2>
+          <Image
+            src="/logos/next_step_favicon.png"
+            alt=""
+            width={32}
+            height={36}
+            className="mx-auto h-9 w-auto"
+            priority
+          />
 
-          <div className="mt-7 space-y-4">
+          <div className="mt-7 space-y-4 short:mt-5 short:space-y-3">
             <div>
               <label htmlFor="username" className={`${labelClass} mb-2`}>
                 Username
@@ -259,14 +267,9 @@ export function LoginScreen() {
             </div>
 
             <div>
-              <div className="mb-2 flex items-baseline justify-between gap-4">
-                <label htmlFor="password" className={labelClass}>
-                  Password
-                </label>
-                <a href="#" onClick={placeholderLink} className={`${linkClass} text-[0.8125rem]`}>
-                  Forgot password?
-                </a>
-              </div>
+              <label htmlFor="password" className={`${labelClass} mb-2`}>
+                Password
+              </label>
               <div className="relative">
                 <input
                   ref={passwordRef}
@@ -295,9 +298,15 @@ export function LoginScreen() {
                   <EyeIcon crossed={showPassword} />
                 </button>
               </div>
-              <p id="password-error" className="mt-1 h-5 text-[0.8125rem] leading-5 text-error">
-                {fieldErrors.password && <span className="field-error block">{fieldErrors.password}</span>}
-              </p>
+              {/* The link shares the reserved error row, after the field, so Tab order matches what you see. */}
+              <div className="mt-1 flex min-h-5 items-start justify-between gap-3 text-[0.8125rem] leading-5">
+                <p id="password-error" className="min-w-0 text-error">
+                  {fieldErrors.password && <span className="field-error block">{fieldErrors.password}</span>}
+                </p>
+                <a href="#" onClick={placeholderLink} className={`${linkClass} shrink-0`}>
+                  Forgot password?
+                </a>
+              </div>
             </div>
           </div>
 
@@ -305,7 +314,7 @@ export function LoginScreen() {
             Sign in
           </button>
 
-          <p className="mt-5 text-center text-[0.8125rem] text-text-secondary">
+          <p className="mt-5 short:mt-4 text-center text-[0.8125rem] text-text-secondary">
             New here?{" "}
             <a href="#" onClick={placeholderLink} className={linkClass}>
               Create an account

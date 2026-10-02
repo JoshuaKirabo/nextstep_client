@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
 /*
+ * Short screens in the stacked (phone) layout, up to the 375×667 iPhone SE: the form
+ * comes first, so the subhead steps aside and spacing tightens to keep the card in view.
+ */
+@custom-variant short (@media (max-width: 63.99rem) and (max-height: 43.75rem));
+
+/*
  * NextStep is dark-only: an obsidian base, with the logo's two colours on top.
  * White carries text; the logo's lavender (#d6d5ff) is the single accent.
  */
@@ -37,6 +43,12 @@
 
 html {
   color-scheme: dark;
+}
+
+/* Tailwind v4 resets buttons to the default arrow; anything clickable gets the hand. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
 }
 
 body {
@@ -145,46 +157,66 @@ body {
 }
 
 /*
- * Primary button: a solid, lit key. A soft top-to-bottom shading gives it
- * material; it settles into the page on press.
+ * Primary button: a solid, lit key in the logo's white and lavender. It never
+ * moves. Hover is light arriving: a lavender glow beneath, a hairline edge, the
+ * fill deepening toward lavender and the label opening up. Press is light
+ * leaving: an instant dim on pointer-down that eases back on release.
  */
 .primary-button {
   height: 3rem;
   width: 100%;
   border-radius: 0.75rem;
-  background: linear-gradient(180deg, #ffffff 0%, #ebeaff 100%);
+  /* Twice the button's height: rest shows the white half, hover glides to the lavender half. */
+  background: linear-gradient(180deg, #ffffff 0%, #ebeaff 50%, #d6d5ff 100%) 0 0 / 100% 200%;
   color: var(--on-light);
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
   font-weight: 500;
-  letter-spacing: -0.005em;
+  /* "SIGN IN" in CSS, so screen readers still read the words, not the letters. */
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   box-shadow:
+    0 0 0 1px rgb(214 213 255 / 0),
     0 1px 2px rgb(0 0 0 / 0.5),
     0 6px 16px -4px rgb(0 0 0 / 0.5);
   transition:
-    filter 150ms ease-out,
-    transform 90ms ease-out,
-    box-shadow 90ms ease-out;
+    background-position 400ms var(--ease-settle),
+    box-shadow 400ms var(--ease-settle),
+    letter-spacing 400ms var(--ease-settle),
+    filter 400ms var(--ease-settle);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .primary-button:hover {
-    filter: brightness(1.06);
+    background-position: 0 100%;
+    letter-spacing: 0.16em;
     box-shadow:
+      0 0 0 1px rgb(214 213 255 / 0.55),
       0 1px 2px rgb(0 0 0 / 0.5),
-      0 10px 24px -6px rgb(214 213 255 / 0.22);
+      0 12px 32px -8px rgb(214 213 255 / 0.4);
   }
 }
 
+/* Pressing is quick; letting go eases back through the slower rest transition above. */
 .primary-button:active {
-  transform: translateY(1px) scale(0.99);
+  filter: brightness(0.92);
   box-shadow:
-    inset 0 1px 2px rgb(46 39 66 / 0.18),
-    0 1px 1px rgb(0 0 0 / 0.5);
+    0 0 0 1px rgb(214 213 255 / 0.35),
+    0 1px 2px rgb(0 0 0 / 0.5),
+    0 4px 12px -6px rgb(214 213 255 / 0.3);
+  transition-duration: 80ms;
 }
 
 .primary-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Light changes stay; the label holds its spacing. */
+  .primary-button,
+  .primary-button:hover {
+    letter-spacing: 0.12em;
+  }
 }
 
 @media (prefers-contrast: more) {
