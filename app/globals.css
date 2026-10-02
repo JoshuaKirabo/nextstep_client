@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 /*
- * Short screens in the stacked (phone) layout, up to the 375×667 iPhone SE: the form
- * comes first, so the subhead steps aside and spacing tightens to keep the card in view.
+ * Short phone screens, down to the iPhone SE (375×667). The form comes first here, so the
+ * subhead gets out of the way and the spacing tightens up to keep the card on screen.
  */
 @custom-variant short (@media (max-width: 63.99rem) and (max-height: 43.75rem));
 
 /*
- * NextStep is dark-only: an obsidian base, with the logo's two colours on top.
- * White carries text; the logo's lavender (#d6d5ff) is the single accent.
+ * NextStep is dark only. A near black base with the logo's two colours on top.
+ * White is for text and the logo's lavender (#d6d5ff) is the only accent.
  */
 :root {
   --bg: #0e0c14;
@@ -17,7 +17,7 @@
   --line-strong: rgb(255 255 255 / 0.16);
   --text: #ffffff;
   --text-secondary: #a6a1b3;
-  /* Receded text (the subhead's second line, placeholders) still clears 4.5:1, even under the spotlight. */
+  /* The quieter text (second line of the subhead, placeholders) still passes 4.5:1 contrast, even under the spotlight. */
   --text-tertiary: #8a8596;
   --accent: #d6d5ff;
   --on-light: #1b1726;
@@ -34,9 +34,9 @@
   --color-text-tertiary: var(--text-tertiary);
   --color-accent: var(--accent);
   --color-error: var(--error);
-  /* The one entrance curve: a quick start that settles softly. */
+  /* The one curve every entrance uses. Starts quick and settles in softly. */
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
-  /* Two typefaces: Clash Display for display moments, Satoshi for everything else. */
+  /* Only two fonts. Clash Display for the big headings, Satoshi for everything else. */
   --font-sans: "Satoshi", system-ui, sans-serif;
   --font-display: "Clash Display", "Satoshi", system-ui, sans-serif;
 }
@@ -45,7 +45,7 @@ html {
   color-scheme: dark;
 }
 
-/* Tailwind v4 resets buttons to the default arrow; anything clickable gets the hand. */
+/* Tailwind v4 puts buttons back to the normal arrow, so this gives anything clickable the hand cursor. */
 button:not(:disabled),
 [role="button"]:not([aria-disabled="true"]) {
   cursor: pointer;
@@ -58,7 +58,7 @@ body {
 }
 
 /*
- * Entrances. CSS rather than JS so the screen is visible from first paint,
+ * Entrances. Doing these in CSS instead of JS so the screen shows up right away,
  * even if scripts are slow or blocked.
  */
 @keyframes rise {
@@ -88,14 +88,14 @@ body {
   animation: word-rise 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* The receding half of the subhead arrives quietly: it fades, the lead moves. */
+/* The quieter half of the subhead just fades in while the first half moves. */
 .subhead-tail {
   animation: fade-in 500ms cubic-bezier(0.22, 1, 0.36, 1) 0.62s both;
 }
 
 /*
- * Returning visitors (and reduced motion): one short, still fade for the whole
- * screen. The staged beats are already in place from the start.
+ * Returning visitors (and anyone with reduced motion) get one short fade for the
+ * whole screen. Everything is already sitting in place from the start.
  */
 :root[data-intro="short"] :is(.rise, .word-rise) {
   animation: fade-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -122,7 +122,7 @@ body {
   }
 }
 
-/* Field errors drop in; they leave instantly, so fixing a field never waits on a fade. */
+/* Field errors drop in but leave right away, so you're never stuck waiting on a fade after fixing one. */
 @keyframes field-error-in {
   from {
     opacity: 0;
@@ -135,8 +135,8 @@ body {
 }
 
 /*
- * "next step" in the headline carries the accent. It's a generated layer over
- * the plain word; the empty alt text keeps screen readers from reading it twice.
+ * "next step" in the headline gets the accent colour. It's an extra layer sitting over
+ * the plain words, and the empty alt text stops screen readers from reading it twice.
  */
 .headline-accent::after {
   content: attr(data-accent) / "";
@@ -146,8 +146,8 @@ body {
 }
 
 /*
- * Login card: a solid surface with no border (per the No-Line rule). It
- * separates from the page by tone and a deep, soft shadow alone.
+ * Login card. A solid surface with no border (the No-Line rule), so it stands
+ * out from the page only by its colour and a deep, soft shadow.
  */
 .login-card {
   background: var(--surface);
@@ -157,21 +157,21 @@ body {
 }
 
 /*
- * Primary button: a solid, lit key in the logo's white and lavender. It never
- * moves. Hover is light arriving: a lavender glow beneath, a hairline edge, the
- * fill deepening toward lavender and the label opening up. Press is light
- * leaving: an instant dim on pointer-down that eases back on release.
+ * Primary button. A solid, lit up key in the logo's white and lavender, and it never
+ * moves. Hovering brings light in: a lavender glow underneath, a thin edge, the fill
+ * shifting toward lavender and the label spreading out. Pressing takes light away:
+ * it dims the second you push down and eases back when you let go.
  */
 .primary-button {
   height: 3rem;
   width: 100%;
   border-radius: 0.75rem;
-  /* Twice the button's height: rest shows the white half, hover glides to the lavender half. */
+  /* The gradient is twice as tall as the button. At rest you see the white half and hovering slides it to the lavender half. */
   background: linear-gradient(180deg, #ffffff 0%, #ebeaff 50%, #d6d5ff 100%) 0 0 / 100% 200%;
   color: var(--on-light);
   font-size: 0.8125rem;
   font-weight: 500;
-  /* "SIGN IN" in CSS, so screen readers still read the words, not the letters. */
+  /* Making it all caps in CSS so screen readers still say the words instead of spelling out letters. */
   text-transform: uppercase;
   letter-spacing: 0.12em;
   box-shadow:
@@ -196,7 +196,7 @@ body {
   }
 }
 
-/* Pressing is quick; letting go eases back through the slower rest transition above. */
+/* Pressing is quick, and letting go eases back using the slower transition above. */
 .primary-button:active {
   filter: brightness(0.92);
   box-shadow:
@@ -212,7 +212,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Light changes stay; the label holds its spacing. */
+  /* The light still changes but the label keeps its spacing. */
   .primary-button,
   .primary-button:hover {
     letter-spacing: 0.12em;
@@ -232,7 +232,7 @@ body {
   }
 }
 
-/* Keep browser autofill on the field color instead of Chrome's pale blue. */
+/* Keeping autofilled fields on our field colour instead of Chrome's pale blue. */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
